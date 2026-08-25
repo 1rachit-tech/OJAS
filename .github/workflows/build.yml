@@ -21,9 +21,9 @@ jobs:
 
       - name: Install Gradle
         run: |
-          wget https://services.gradle.org/distributions/gradle-8.10.2-bin.zip
-          unzip -q gradle-8.10.2-bin.zip
-          echo "$PWD/gradle-8.10.2/bin" >> $GITHUB_PATH
+          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+          unzip -q gradle-9.3.1-bin.zip
+          echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
       - name: Build Debug APK
         run: gradle assembleDebug
