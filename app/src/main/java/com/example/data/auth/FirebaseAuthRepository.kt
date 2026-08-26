@@ -67,7 +67,7 @@ class FirebaseAuthRepository(
         if (!EMAIL_REGEX.matches(norm)) return fail("Enter a valid email address.")
         if (password.length < 6) return fail("Password must be at least 6 characters.")
         return try {
-            val res = auth.createUserWithEmailAndPassword(norm, password).awaitTask("signup")
+            val res = auth.createUserWithEmailAndPassword(norm, password).awaitSuccess("signup")
             val user = res.user ?: return fail("Firebase created no user.")
             val profile = ensureProfile(user)
             publishProfile(profile)
@@ -88,7 +88,7 @@ class FirebaseAuthRepository(
         if (!EMAIL_REGEX.matches(norm)) return fail("Sign in with your registered email address.")
         if (password.isBlank()) return fail("Enter your password.")
         return try {
-            val res = auth.signInWithEmailAndPassword(norm, password).awaitTask("login")
+            val res = auth.signInWithEmailAndPassword(norm, password).awaitSuccess("login")
             val user = res.user ?: return fail("Firebase returned no signed-in user.")
             val profile = ensureProfile(user)
             publishProfile(profile)
@@ -105,12 +105,12 @@ class FirebaseAuthRepository(
     override suspend fun signInWithGoogle(idToken: String, email: String?, displayName: String?): Result<OjasUser> {
         if (idToken.isBlank()) return fail("Google did not return an ID token.")
         return try {
-            signInWithCredential(GoogleAuthProvider.getCredential(idToken, null), "signInWithCredential(Google)")
+            signInWithCredential(GoogleAuthProvider.getCredential(idToken, null), "signInWithGoogle")
         } catch (e: Exception) { Result.failure(e) }
     }
 
     private suspend fun signInWithCredential(cred: AuthCredential, op: String): Result<OjasUser> {
-        val res = auth.signInWithCredential(cred).awaitTask(op)
+        val res = auth.signInWithCredential(cred).awaitSuccess(op)
         val user = res.user ?: return fail("Firebase returned no signed-in user.")
         val profile = ensureProfile(user)
         publishProfile(profile)
@@ -149,7 +149,7 @@ class FirebaseAuthRepository(
             }
             user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(cName).apply {
                 if (!avatarUrl.isNullOrBlank()) setPhotoUri(Uri.parse(avatarUrl))
-            }.build()).awaitVoidTask("updateProfile")
+            }.build()).awaitSuccess("updateProfile")
             _authState.value = AuthState.Authenticated(profile)
             Result.success(profile)
         } catch (e: FirebaseFirestoreException) {
@@ -159,7 +159,7 @@ class FirebaseAuthRepository(
     }
 
     override suspend fun getUserProfile(userId: String): Result<OjasUser> = try {
-        val snap = firestore.collection(USERS).document(userId).get().awaitTask("getUserProfile")
+        val snap = firestore.collection(USERS).document(userId).get().awaitSuccess("getUserProfile")
         if (!snap.exists()) fail("User profile not found.") else Result.success(mapToUser(snap.data.orEmpty()))
     } catch (e: Exception) { Result.failure(e) }
 
@@ -174,7 +174,7 @@ class FirebaseAuthRepository(
             isEmailVerified = auth.currentUser?.isEmailVerified ?: current.isEmailVerified
         )
         return try {
-            firestore.collection(USERS).document(userId).set(userToMap(updated), SetOptions.merge()).awaitVoidTask("updateUserProfile")
+            firestore.collection(USERS).document(userId).set(userToMap(updated), SetOptions.merge()).awaitSuccess("updateUserProfile")
             publishProfile(updated)
             Result.success(updated)
         } catch (e: Exception) { Result.failure(e) }
@@ -184,7 +184,7 @@ class FirebaseAuthRepository(
         val clean = username.trim().removePrefix("@").lowercase()
         if (!USERNAME_REGEX.matches(clean) || clean in RESERVED_USERNAMES) return Result.success(false)
         return try {
-            val snap = firestore.collection(USERNAMES).document(clean).get().awaitTask("checkUsernameAvailability")
+            val snap = firestore.collection(USERNAMES).document(clean).get().awaitSuccess("checkUsernameAvailability")
             Result.success(!snap.exists() || snap.getString("uid") == excludeUserId)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -193,7 +193,7 @@ class FirebaseAuthRepository(
         val norm = email.trim().lowercase()
         if (!EMAIL_REGEX.matches(norm)) return fail("Enter a valid email address.")
         return try {
-            auth.sendPasswordResetEmail(norm).awaitVoidTask("sendPasswordResetEmail")
+            auth.sendPasswordResetEmail(norm).awaitSuccess("sendPasswordResetEmail")
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -202,15 +202,16 @@ class FirebaseAuthRepository(
         val norm = email.trim().lowercase()
         if (!EMAIL_REGEX.matches(norm)) return fail("Enter a valid email address.")
         return try {
-            val snap = firestore.collection(USERS).whereEqualTo("email", norm).limit(1).get().awaitTask("recoverOjasId")
-            Result.success(snap.documents.firstOrNull()?.data?.let(::mapToUser))
+            val snap = firestore.collection(USERS).whereEqualTo("email", norm).limit(1).get().awaitSuccess("recoverOjasId")
+            val docs = snap.documents
+            Result.success(docs.firstOrNull()?.data?.let(::mapToUser))
         } catch (e: Exception) { Result.failure(e) }
     }
 
     override suspend fun sendEmailVerification(): Result<Unit> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            user.sendEmailVerification().awaitVoidTask("sendEmailVerification")
+            user.sendEmailVerification().awaitSuccess("sendEmailVerification")
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -220,7 +221,7 @@ class FirebaseAuthRepository(
     override suspend fun reloadUser(): Result<Boolean> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            user.reload().awaitVoidTask("reloadUser")
+            user.reload().awaitSuccess("reloadUser")
             auth.currentUser?.let { publishProfile(ensureProfile(it)) }
             Result.success(auth.currentUser?.isEmailVerified ?: false)
         } catch (e: Exception) { Result.failure(e) }
@@ -232,7 +233,7 @@ class FirebaseAuthRepository(
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         if (idToken.isBlank()) return fail("Google ID token is missing.")
         return try {
-            val res = user.linkWithCredential(GoogleAuthProvider.getCredential(idToken, null)).awaitTask("linkWithGoogle")
+            val res = user.linkWithCredential(GoogleAuthProvider.getCredential(idToken, null)).awaitSuccess("linkWithGoogle")
             val profile = ensureProfile(res.user ?: user)
             publishProfile(profile)
             Result.success(profile)
@@ -242,7 +243,7 @@ class FirebaseAuthRepository(
     override suspend fun linkWithEmailPassword(email: String, password: String): Result<OjasUser> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            val res = user.linkWithCredential(EmailAuthProvider.getCredential(email.trim(), password)).awaitTask("linkWithEmailPassword")
+            val res = user.linkWithCredential(EmailAuthProvider.getCredential(email.trim(), password)).awaitSuccess("linkWithEmailPassword")
             val profile = ensureProfile(res.user ?: user)
             publishProfile(profile)
             Result.success(profile)
@@ -254,7 +255,7 @@ class FirebaseAuthRepository(
     override suspend fun unlinkProvider(providerId: String): Result<OjasUser> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            val res = user.unlink(providerId).awaitTask("unlinkProvider")
+            val res = user.unlink(providerId).awaitSuccess("unlinkProvider")
             val profile = ensureProfile(res.user ?: user)
             publishProfile(profile)
             Result.success(profile)
@@ -287,7 +288,7 @@ class FirebaseAuthRepository(
 
     private suspend fun ensureProfile(user: FirebaseUser): OjasUser {
         val ref = firestore.collection(USERS).document(user.uid)
-        val snap = ref.get().awaitTask("loadUserProfile")
+        val snap = ref.get().awaitSuccess("loadUserProfile")
         if (snap.exists()) {
             return mapToUser(snap.data.orEmpty()).copy(
                 email = user.email ?: "",
@@ -307,7 +308,7 @@ class FirebaseAuthRepository(
             phoneNumber = user.phoneNumber,
             isEmailVerified = user.isEmailVerified
         )
-        ref.set(userToMap(profile)).awaitVoidTask("createUserProfile")
+        ref.set(userToMap(profile)).awaitSuccess("createUserProfile")
         return profile
     }
 
@@ -339,28 +340,10 @@ class FirebaseAuthRepository(
 
     private fun <T> fail(message: String, cause: Throwable? = null): Result<T> = Result.failure(Exception(message, cause))
 
-    private suspend fun <T> Task<T>.awaitTask(op: String): T = suspendCancellableCoroutine { cont ->
-        addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val res = task.result
-                if (res != null) {
-                    cont.resume(res)
-                } else {
-                    cont.resumeWithException(Exception("Operation $op returned null result"))
-                }
-            } else {
-                cont.resumeWithException(task.exception ?: Exception("Operation $op failed"))
-            }
-        }
-    }
-
-    private suspend fun Task<*>.awaitVoidTask(op: String): Unit = suspendCancellableCoroutine { cont ->
-        addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                cont.resume(Unit)
-            } else {
-                cont.resumeWithException(task.exception ?: Exception("Operation $op failed"))
-            }
-        }
+    private suspend fun <T> Task<T>.awaitSuccess(op: String): T = suspendCancellableCoroutine { cont ->
+        addOnSuccessListener { cont.resume(it) }
+        addOnFailureListener { cont.resumeWithException(it) }
     }
 }
+
+
