@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "1076759095973-1l4q1pcq0ok95tf63qlfq37tcel9agtl.apps.googleusercontent.com",
+          "client_id": "1076759095973-3rs7laht57hqh87ks7gfujdi139gl69i.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.rachit.ojas",
-            "certificate_hash": "9f7387e533ceca7bfe68fce2a10bb0c339ace028"
+            "certificate_hash": "a5a247806c6ff4cb42bdf283cc799ae10ae4fb51"
           }
         },
         {
