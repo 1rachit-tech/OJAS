@@ -15,60 +15,47 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Apply source fix
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           p = Path('app/src/main/java/com/example/ui/OjasApp.kt')
           s = p.read_text()
-          changed = False
-
-          if 'GetGoogleIdOption' in s:
-              s = s.replace(
-                  'import com.google.android.libraries.identity.googleid.GetGoogleIdOption',
-                  'import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption'
-              )
-              changed = True
-
-          old_option = '''val googleIdOption = GetGoogleIdOption.Builder()
-                        .setFilterByAuthorizedAccounts(false)
-                        .setServerClientId(rawClientId)
-                        .setAutoSelectEnabled(false)
-                        .build()
-
-                    val request = GetCredentialRequest.Builder()
-                        .addCredentialOption(googleIdOption)
-                        .build()'''
-          new_option = '''val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
-                        .build()
-
-                    val request = GetCredentialRequest.Builder()
-                        .addCredentialOption(signInWithGoogleOption)
-                        .build()'''
-          if old_option in s:
-              s = s.replace(old_option, new_option)
-              changed = True
 
           s = s.replace(
-              'Google Sign-In configuration required: In Firebase Console (ojas-e8161) > Authentication > Sign-in method, enable Google Provider and register your SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).',
-              'Google Sign-In configuration is missing. Enable the Google provider in Firebase Authentication and verify the Web client ID in google-services.json.'
-          )
-          s = s.replace(
-              'No authorized Google account found on device. Please ensure Google Sign-In is enabled in Firebase Console (ojas-e8161) with SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).',
-              'Google Sign-In could not access an account on this device. Check that Google Play services is available and try again.'
-          )
-          s = s.replace(
-              'Google Sign-In authorization failed (Code 16). Please register the app\'s SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28) in Firebase Console (ojas-e8161).',
-              'Google Sign-In authorization failed (Code 16). Verify this build\'s package name and signing certificate SHA fingerprints in Firebase Console.'
+              'import com.google.android.libraries.identity.googleid.GetGoogleIdOption',
+              'import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption'
           )
 
-          if changed:
-              p.write_text(s)
+          s = re.sub(
+              r'val googleIdOption = GetGoogleIdOption\.Builder\(\)\s*'
+              r'\.setFilterByAuthorizedAccounts\(false\)\s*'
+              r'\.setServerClientId\(rawClientId\)\s*'
+              r'\.setAutoSelectEnabled\(false\)\s*'
+              r'\.build\(\)\s*\n\s*'
+              r'val request = GetCredentialRequest\.Builder\(\)\s*'
+              r'\.addCredentialOption\(googleIdOption\)\s*'
+              r'\.build\(\)',
+              'val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)\n                        .build()\n\n                    val request = GetCredentialRequest.Builder()\n                        .addCredentialOption(signInWithGoogleOption)\n                        .build()',
+              s,
+              count=1
+          )
+
+          replacements = {
+              'Google Sign-In configuration required: In Firebase Console (ojas-e8161) > Authentication > Sign-in method, enable Google Provider and register your SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).': 'Google Sign-In configuration is missing. Enable the Google provider in Firebase Authentication and verify the Web client ID in google-services.json.',
+              'No authorized Google account found on device. Please ensure Google Sign-In is enabled in Firebase Console (ojas-e8161) with SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).': 'Google Sign-In could not access an account on this device. Check that Google Play services is available and try again.',
+              "Google Sign-In authorization failed (Code 16). Please register the app's SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28) in Firebase Console (ojas-e8161).": "Google Sign-In authorization failed (Code 16). Verify this build's package name and signing certificate SHA fingerprints in Firebase Console."
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+
           if 'GetSignInWithGoogleOption' not in s or '.addCredentialOption(signInWithGoogleOption)' not in s:
               raise SystemExit('Permanent Google Sign-In source fix was not applied correctly.')
+
+          p.write_text(s)
 
       - name: Commit permanent source fix
         run: |
