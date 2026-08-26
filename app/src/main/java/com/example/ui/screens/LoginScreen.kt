@@ -61,11 +61,8 @@ import com.example.ui.components.AuthDivider
 import com.example.ui.components.ForgotPasswordDialog
 import com.example.ui.components.ForgotUsernameDialog
 import com.example.ui.components.GoogleSignInButton
-import com.example.ui.components.PhoneSignInButton
 import com.example.ui.theme.OjasRoyalBlue
-import com.example.ui.theme.OjasSlate400
 import com.example.ui.theme.OjasSlate500
-import com.example.ui.theme.OjasSlate800
 
 private enum class ActiveRecoveryDialog {
     NONE,
@@ -82,7 +79,6 @@ fun LoginScreen(
     onActionNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
     onGoogleSignInClick: (() -> Unit)? = null,
-    onPhoneSignInClick: (() -> Unit)? = null,
     onForgotPasswordClick: ((email: String) -> Unit)? = null,
     onSearchOjasId: (suspend (email: String) -> Result<com.example.data.model.OjasUser?>)? = null,
     onBackClick: (() -> Unit)? = null,
@@ -99,7 +95,6 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var activeDialog by remember { mutableStateOf(ActiveRecoveryDialog.NONE) }
     var recoveryPrefilledEmail by remember { mutableStateOf("") }
-
     val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
 
@@ -110,393 +105,136 @@ fun LoginScreen(
                 title = {
                     Text(
                         text = "Login",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp
-                        ),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.testTag("login_page_title")
                     )
                 },
                 navigationIcon = {
                     if (onBackClick != null) {
-                        IconButton(
-                            onClick = onBackClick,
-                            modifier = Modifier.testTag("login_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = "Back",
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                        IconButton(onClick = onBackClick, modifier = Modifier.testTag("login_back_button")) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(scrollState)
-                .imePadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).background(MaterialTheme.colorScheme.background)
+                .verticalScroll(scrollState).imePadding().padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("OJAS", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, fontSize = 32.sp, letterSpacing = 2.sp), color = OjasRoyalBlue)
+            Spacer(Modifier.height(6.dp))
+            Text(promptMessage ?: "Sign in to your account", style = MaterialTheme.typography.bodyMedium, color = OjasSlate500, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(32.dp))
 
-            // App Identity & Header
-            Text(
-                text = "OJAS",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Black,
-                    fontSize = 32.sp,
-                    letterSpacing = 2.sp
-                ),
-                color = OjasRoyalBlue
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = promptMessage ?: "Sign in to your account",
-                style = MaterialTheme.typography.bodyMedium,
-                color = OjasSlate500,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Error notice banner if authentication fails
             if (errorMessage != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(12.dp)
-                        .testTag("login_error_banner")
-                ) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f), RoundedCornerShape(8.dp)).padding(12.dp).testTag("login_error_banner")) {
+                    Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
             }
 
-            // 1. Existing User Login Fields
-            // Email or Username field
             OutlinedTextField(
                 value = emailOrUsername,
                 onValueChange = { emailOrUsername = it },
-                label = { Text("Email or @username") },
-                placeholder = { Text("Enter your email or username") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Email,
-                        contentDescription = null,
-                        tint = OjasSlate500,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
+                label = { Text("Email") },
+                placeholder = { Text("Enter your email") },
+                leadingIcon = { Icon(Icons.Outlined.Email, null, tint = OjasSlate500, modifier = Modifier.size(20.dp)) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Email,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = OjasRoyalBlue,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OjasRoyalBlue, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_username_field")
+                modifier = Modifier.fillMaxWidth().testTag("login_username_field")
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Password field (secure, no plain text exposure)
+            Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
                 placeholder = { Text("Enter your password") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Lock,
-                        contentDescription = null,
-                        tint = OjasSlate500,
-                        modifier = Modifier.size(20.dp)
-                    )
-                },
+                leadingIcon = { Icon(Icons.Outlined.Lock, null, tint = OjasSlate500, modifier = Modifier.size(20.dp)) },
                 trailingIcon = {
-                    IconButton(
-                        onClick = { passwordVisible = !passwordVisible },
-                        modifier = Modifier.testTag("login_toggle_password_visibility")
-                    ) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                            tint = OjasSlate500,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    IconButton(onClick = { passwordVisible = !passwordVisible }, modifier = Modifier.testTag("login_toggle_password_visibility")) {
+                        Icon(if (passwordVisible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (passwordVisible) "Hide password" else "Show password", tint = OjasSlate500, modifier = Modifier.size(20.dp))
                     }
                 },
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        focusManager.clearFocus()
-                        if (emailOrUsername.isNotBlank() && password.isNotBlank()) {
-                            onLoginClick(emailOrUsername, password)
-                        } else {
-                            onActionNotice("Please enter email/username and password")
-                        }
-                    }
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = OjasRoyalBlue,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); if (emailOrUsername.isNotBlank() && password.isNotBlank()) onLoginClick(emailOrUsername, password) else onActionNotice("Please enter email and password") }),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = OjasRoyalBlue, unfocusedBorderColor = MaterialTheme.colorScheme.outline),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_password_field")
+                modifier = Modifier.fillMaxWidth().testTag("login_password_field")
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Account Recovery Links (Zero SMS Cost: Firebase Reset & ID Recovery)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = {
-                        focusManager.clearFocus()
-                        recoveryPrefilledEmail = if (emailOrUsername.contains("@")) emailOrUsername else ""
-                        activeDialog = ActiveRecoveryDialog.FORGOT_OJAS_ID
-                    },
-                    modifier = Modifier.testTag("login_forgot_username_button")
-                ) {
-                    Text(
-                        text = "Forgot OJAS ID?",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        color = OjasSlate500
-                    )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { focusManager.clearFocus(); recoveryPrefilledEmail = emailOrUsername; activeDialog = ActiveRecoveryDialog.FORGOT_OJAS_ID }, modifier = Modifier.testTag("login_forgot_username_button")) {
+                    Text("Forgot OJAS ID?", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium), color = OjasSlate500)
                 }
-
-                TextButton(
-                    onClick = {
-                        focusManager.clearFocus()
-                        recoveryPrefilledEmail = if (emailOrUsername.contains("@")) emailOrUsername else ""
-                        activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD
-                    },
-                    modifier = Modifier.testTag("login_forgot_password_button")
-                ) {
-                    Text(
-                        text = "Forgot password?",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        ),
-                        color = OjasRoyalBlue
-                    )
+                TextButton(onClick = { focusManager.clearFocus(); recoveryPrefilledEmail = emailOrUsername; activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD }, modifier = Modifier.testTag("login_forgot_password_button")) {
+                    Text("Forgot password?", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium), color = OjasRoyalBlue)
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Primary Login Action Button
+            Spacer(Modifier.height(12.dp))
             Button(
-                onClick = {
-                    focusManager.clearFocus()
-                    if (emailOrUsername.isBlank() || password.isBlank()) {
-                        onActionNotice("Please enter both email/username and password")
-                    } else {
-                        onLoginClick(emailOrUsername, password)
-                    }
-                },
+                onClick = { focusManager.clearFocus(); if (emailOrUsername.isBlank() || password.isBlank()) onActionNotice("Please enter both email and password") else onLoginClick(emailOrUsername, password) },
                 enabled = !isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("login_submit_button"),
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("login_submit_button"),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = OjasRoyalBlue,
-                    contentColor = MaterialTheme.colorScheme.surface
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = OjasRoyalBlue, contentColor = MaterialTheme.colorScheme.surface)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text = "Login",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.surface, strokeWidth = 2.dp)
+                else Text("Login", fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Social / Google Authentication Option
+            Spacer(Modifier.height(18.dp))
             AuthDivider()
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Google Sign In Option
-            GoogleSignInButton(
-                onClick = {
-                    focusManager.clearFocus()
-                    onGoogleSignInClick?.invoke()
-                },
-                isLoading = isLoading,
-                text = "Continue with Google"
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Help & Troubleshooting Link
-            TextButton(
-                onClick = {
-                    focusManager.clearFocus()
-                    activeDialog = ActiveRecoveryDialog.ACCOUNT_HELP
-                },
-                modifier = Modifier.testTag("login_account_help_button")
-            ) {
-                Text(
-                    text = "Can't access your account? Account Help",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
-                    color = OjasSlate500
-                )
+            Spacer(Modifier.height(12.dp))
+            GoogleSignInButton(onClick = { focusManager.clearFocus(); onGoogleSignInClick?.invoke() }, isLoading = isLoading, text = "Continue with Google")
+            Spacer(Modifier.height(20.dp))
+            TextButton(onClick = { focusManager.clearFocus(); activeDialog = ActiveRecoveryDialog.ACCOUNT_HELP }, modifier = Modifier.testTag("login_account_help_button")) {
+                Text("Can't access your account? Account Help", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = OjasSlate500)
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // New User Account Creation Entry
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Don't have an account?",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OjasSlate500
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                TextButton(
-                    onClick = onNavigateToSignup,
-                    modifier = Modifier.testTag("login_create_account_button")
-                ) {
-                    Text(
-                        text = "Create an account",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = OjasRoyalBlue
-                    )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Text("Don't have an account?", style = MaterialTheme.typography.bodySmall, color = OjasSlate500)
+                Spacer(Modifier.width(4.dp))
+                TextButton(onClick = onNavigateToSignup, modifier = Modifier.testTag("login_create_account_button")) {
+                    Text("Create an account", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = OjasRoyalBlue)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
         }
-
         when (activeDialog) {
-            ActiveRecoveryDialog.FORGOT_PASSWORD -> {
-                ForgotPasswordDialog(
-                    onDismissRequest = {
-                        activeDialog = ActiveRecoveryDialog.NONE
-                        onDismissForgotPassword?.invoke()
-                    },
-                    onSubmitEmail = { resetEmail ->
-                        onForgotPasswordClick?.invoke(resetEmail)
-                    },
-                    isLoading = isForgotPasswordLoading,
-                    errorMessage = forgotPasswordError,
-                    isSuccessSent = forgotPasswordSuccess,
-                    initialEmail = recoveryPrefilledEmail.ifBlank {
-                        if (emailOrUsername.contains("@")) emailOrUsername else ""
-                    }
-                )
-            }
-
-            ActiveRecoveryDialog.FORGOT_OJAS_ID -> {
-                ForgotUsernameDialog(
-                    onDismissRequest = {
-                        activeDialog = ActiveRecoveryDialog.NONE
-                    },
-                    onSearchOjasId = onSearchOjasId,
-                    onIdSelected = { username ->
-                        emailOrUsername = username
-                        activeDialog = ActiveRecoveryDialog.NONE
-                    },
-                    onUseEmailToLogin = { email ->
-                        emailOrUsername = email
-                        activeDialog = ActiveRecoveryDialog.NONE
-                    },
-                    onGoogleSignInClick = {
-                        activeDialog = ActiveRecoveryDialog.NONE
-                        onGoogleSignInClick?.invoke()
-                    },
-                    onForgotPasswordClick = { email ->
-                        recoveryPrefilledEmail = email
-                        activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD
-                    },
-                    initialEmail = recoveryPrefilledEmail.ifBlank {
-                        if (emailOrUsername.contains("@")) emailOrUsername else ""
-                    }
-                )
-            }
-
-            ActiveRecoveryDialog.ACCOUNT_HELP -> {
-                AccountHelpDialog(
-                    onDismissRequest = { activeDialog = ActiveRecoveryDialog.NONE },
-                    onForgotPasswordClick = {
-                        recoveryPrefilledEmail = if (emailOrUsername.contains("@")) emailOrUsername else ""
-                        activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD
-                    },
-                    onForgotUsernameClick = {
-                        recoveryPrefilledEmail = if (emailOrUsername.contains("@")) emailOrUsername else ""
-                        activeDialog = ActiveRecoveryDialog.FORGOT_OJAS_ID
-                    },
-                    onGoogleSignInClick = {
-                        activeDialog = ActiveRecoveryDialog.NONE
-                        onGoogleSignInClick?.invoke()
-                    }
-                )
-            }
-
+            ActiveRecoveryDialog.FORGOT_PASSWORD -> ForgotPasswordDialog(
+                onDismissRequest = { activeDialog = ActiveRecoveryDialog.NONE; onDismissForgotPassword?.invoke() },
+                onSubmitEmail = { onForgotPasswordClick?.invoke(it) },
+                isLoading = isForgotPasswordLoading,
+                errorMessage = forgotPasswordError,
+                isSuccessSent = forgotPasswordSuccess,
+                initialEmail = recoveryPrefilledEmail
+            )
+            ActiveRecoveryDialog.FORGOT_OJAS_ID -> ForgotUsernameDialog(
+                onDismissRequest = { activeDialog = ActiveRecoveryDialog.NONE },
+                onSearchOjasId = onSearchOjasId,
+                onIdSelected = { username -> emailOrUsername = username; activeDialog = ActiveRecoveryDialog.NONE },
+                onUseEmailToLogin = { email -> emailOrUsername = email; activeDialog = ActiveRecoveryDialog.NONE },
+                onGoogleSignInClick = { activeDialog = ActiveRecoveryDialog.NONE; onGoogleSignInClick?.invoke() },
+                onForgotPasswordClick = { email -> recoveryPrefilledEmail = email; activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD },
+                initialEmail = recoveryPrefilledEmail
+            )
+            ActiveRecoveryDialog.ACCOUNT_HELP -> AccountHelpDialog(
+                onDismissRequest = { activeDialog = ActiveRecoveryDialog.NONE },
+                onForgotPasswordClick = { recoveryPrefilledEmail = emailOrUsername; activeDialog = ActiveRecoveryDialog.FORGOT_PASSWORD },
+                onForgotUsernameClick = { recoveryPrefilledEmail = emailOrUsername; activeDialog = ActiveRecoveryDialog.FORGOT_OJAS_ID },
+                onGoogleSignInClick = { activeDialog = ActiveRecoveryDialog.NONE; onGoogleSignInClick?.invoke() }
+            )
             ActiveRecoveryDialog.NONE -> Unit
         }
     }
