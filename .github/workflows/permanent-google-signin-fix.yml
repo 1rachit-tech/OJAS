@@ -1,0 +1,83 @@
+name: Apply Permanent Google Sign-In Fix
+
+on:
+  push:
+    branches:
+      - build/google-signin-test-apk
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply source fix
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/ui/OjasApp.kt')
+          s = p.read_text()
+          changed = False
+
+          if 'GetGoogleIdOption' in s:
+              s = s.replace(
+                  'import com.google.android.libraries.identity.googleid.GetGoogleIdOption',
+                  'import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption'
+              )
+              changed = True
+
+          old_option = '''val googleIdOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(rawClientId)
+                        .setAutoSelectEnabled(false)
+                        .build()
+
+                    val request = GetCredentialRequest.Builder()
+                        .addCredentialOption(googleIdOption)
+                        .build()'''
+          new_option = '''val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
+                        .build()
+
+                    val request = GetCredentialRequest.Builder()
+                        .addCredentialOption(signInWithGoogleOption)
+                        .build()'''
+          if old_option in s:
+              s = s.replace(old_option, new_option)
+              changed = True
+
+          s = s.replace(
+              'Google Sign-In configuration required: In Firebase Console (ojas-e8161) > Authentication > Sign-in method, enable Google Provider and register your SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).',
+              'Google Sign-In configuration is missing. Enable the Google provider in Firebase Authentication and verify the Web client ID in google-services.json.'
+          )
+          s = s.replace(
+              'No authorized Google account found on device. Please ensure Google Sign-In is enabled in Firebase Console (ojas-e8161) with SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28).',
+              'Google Sign-In could not access an account on this device. Check that Google Play services is available and try again.'
+          )
+          s = s.replace(
+              'Google Sign-In authorization failed (Code 16). Please register the app\'s SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28) in Firebase Console (ojas-e8161).',
+              'Google Sign-In authorization failed (Code 16). Verify this build\'s package name and signing certificate SHA fingerprints in Firebase Console.'
+          )
+
+          if changed:
+              p.write_text(s)
+          if 'GetSignInWithGoogleOption' not in s or '.addCredentialOption(signInWithGoogleOption)' not in s:
+              raise SystemExit('Permanent Google Sign-In source fix was not applied correctly.')
+
+      - name: Commit permanent source fix
+        run: |
+          if git diff --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/OjasApp.kt
+          git commit -m "Fix Google account picker sign-in flow"
+          git push
