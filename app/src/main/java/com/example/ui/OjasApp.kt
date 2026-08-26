@@ -25,33 +25,12 @@ import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.auth.AuthRepository
 import com.example.data.auth.AuthState
-import com.example.data.repository.MediaStorageService
-import com.example.data.repository.OjRecommendationRepository
-import com.example.data.repository.OjRepository
-import com.example.data.repository.OjWatchAnalyticsRepository
-import com.example.data.repository.OjasMediaStorageService
-import com.example.data.repository.OjasOjRecommendationRepository
-import com.example.data.repository.OjasOjRepository
-import com.example.data.repository.OjasOjWatchAnalyticsRepository
-import com.example.data.repository.OjasPostRepository
-import com.example.data.repository.OjasSocialInteractionRepository
-import com.example.data.repository.PostRepository
-import com.example.data.repository.SocialInteractionRepository
+import com.example.data.repository.*
 import com.example.ui.components.CategoryFilterSheet
 import com.example.ui.components.CreateActionSheet
 import com.example.ui.components.OjasBottomBar
 import com.example.ui.navigation.OjasDestination
-import com.example.ui.screens.CreateOjScreen
-import com.example.ui.screens.CreatePostScreen
-import com.example.ui.screens.ExploreScreen
-import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.LoginScreen
-import com.example.ui.screens.OjScreen
-import com.example.ui.screens.PhoneAuthScreen
-import com.example.ui.screens.PhoneAuthStep
-import com.example.ui.screens.SetupScreen
-import com.example.ui.screens.SignupScreen
-import com.example.ui.screens.YouScreen
+import com.example.ui.screens.*
 import com.example.ui.theme.OjasTheme
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -69,373 +48,141 @@ fun OjasApp(
     postRepository: PostRepository = remember(mediaStorageService) { OjasPostRepository(mediaStorageService) },
     ojRepository: OjRepository = remember(mediaStorageService) { OjasOjRepository(mediaStorageService) },
     watchAnalyticsRepository: OjWatchAnalyticsRepository = remember(ojRepository) { OjasOjWatchAnalyticsRepository(ojRepository) },
-    recommendationRepository: OjRecommendationRepository = remember(ojRepository, socialRepository, watchAnalyticsRepository) {
-        OjasOjRecommendationRepository(ojRepository, socialRepository, watchAnalyticsRepository)
-    }
+    recommendationRepository: OjRecommendationRepository = remember(ojRepository, socialRepository, watchAnalyticsRepository) { OjasOjRecommendationRepository(ojRepository, socialRepository, watchAnalyticsRepository) }
 ) {
     OjasTheme {
         val authState by authRepository.authState.collectAsStateWithLifecycle()
-        var currentDestination by remember { mutableStateOf(OjasDestination.HOME) }
-        var deepLinkTargetOjId by remember { mutableStateOf<String?>(null) }
-        var isAuthGateOpen by remember { mutableStateOf(false) }
-        var currentAuthScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
-        var pendingAuthorizedAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-        var authPromptMessage by remember { mutableStateOf<String?>(null) }
-        var isCreateSheetOpen by remember { mutableStateOf(false) }
-        var isCreatePostOpen by remember { mutableStateOf(false) }
-        var isCreateOjOpen by remember { mutableStateOf(false) }
-        var isFilterSheetOpen by remember { mutableStateOf(false) }
-        var selectedOjCategory by remember { mutableStateOf<String?>(null) }
-        var authErrorMessage by remember { mutableStateOf<String?>(null) }
-        var isAuthProcessing by remember { mutableStateOf(false) }
-        var isForgotPasswordLoading by remember { mutableStateOf(false) }
-        var forgotPasswordError by remember { mutableStateOf<String?>(null) }
-        var forgotPasswordSuccess by remember { mutableStateOf(false) }
-        var phoneAuthStep by remember { mutableStateOf(PhoneAuthStep.ENTER_PHONE) }
-        var phoneVerificationId by remember { mutableStateOf("") }
-        var phoneTargetNumber by remember { mutableStateOf("") }
+        var destination by remember { mutableStateOf(OjasDestination.HOME) }
+        var deepLink by remember { mutableStateOf<String?>(null) }
+        var gateOpen by remember { mutableStateOf(false) }
+        var authScreen by remember { mutableStateOf(AuthScreen.LOGIN) }
+        var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+        var prompt by remember { mutableStateOf<String?>(null) }
+        var authError by remember { mutableStateOf<String?>(null) }
+        var loading by remember { mutableStateOf(false) }
+        var forgotLoading by remember { mutableStateOf(false) }
+        var forgotError by remember { mutableStateOf<String?>(null) }
+        var forgotSuccess by remember { mutableStateOf(false) }
+        var phoneStep by remember { mutableStateOf(PhoneAuthStep.ENTER_PHONE) }
+        var verificationId by remember { mutableStateOf("") }
+        var phoneNumber by remember { mutableStateOf("") }
+        var createSheet by remember { mutableStateOf(false) }
+        var createPost by remember { mutableStateOf(false) }
+        var createOj by remember { mutableStateOf(false) }
+        var filterOpen by remember { mutableStateOf(false) }
+        var selectedCategory by remember { mutableStateOf<String?>(null) }
 
         val context = LocalContext.current
         val activity = context as? Activity
-        val snackbarHostState = remember { SnackbarHostState() }
-        val coroutineScope = rememberCoroutineScope()
+        val scope = rememberCoroutineScope()
+        val snackbars = remember { SnackbarHostState() }
+        val notice: (String) -> Unit = { message -> scope.launch { snackbars.currentSnackbarData?.dismiss(); snackbars.showSnackbar(message) } }
 
-        // Keep the UI gate synchronized with the repository state. This is important because
-        // Firebase's auth-state listener can update asynchronously after a credential result.
+        LaunchedEffect(initialDeepLinkOjId) {
+            if (!initialDeepLinkOjId.isNullOrBlank()) { deepLink = initialDeepLinkOjId; destination = OjasDestination.OJ; onDeepLinkConsumed?.invoke() }
+        }
         LaunchedEffect(authState) {
             when (val state = authState) {
-                is AuthState.Authenticated,
-                is AuthState.SetupRequired -> {
-                    isAuthProcessing = false
-                    isAuthGateOpen = false
-                    authErrorMessage = null
-                }
-                is AuthState.ConfigMissing -> {
-                    isAuthProcessing = false
-                    authErrorMessage = state.message
-                }
-                is AuthState.InitializationFailed -> {
-                    isAuthProcessing = false
-                    authErrorMessage = state.reason
-                }
+                is AuthState.Authenticated, is AuthState.SetupRequired -> { loading = false; gateOpen = false; authError = null }
+                is AuthState.ConfigMissing -> { loading = false; authError = state.message }
+                is AuthState.InitializationFailed -> { loading = false; authError = state.reason }
                 else -> Unit
             }
         }
 
-        LaunchedEffect(initialDeepLinkOjId) {
-            if (!initialDeepLinkOjId.isNullOrBlank()) {
-                deepLinkTargetOjId = initialDeepLinkOjId
-                currentDestination = OjasDestination.OJ
-                onDeepLinkConsumed?.invoke()
-            }
-        }
-
-        val showNotice: (String) -> Unit = { message ->
-            coroutineScope.launch {
-                snackbarHostState.currentSnackbarData?.dismiss()
-                snackbarHostState.showSnackbar(message)
-            }
-        }
-
-        fun completeSuccessfulAuth() {
-            // Reconcile immediately instead of relying only on the asynchronous Firebase listener.
+        fun finishAuth() {
             authRepository.checkSession()
-            isAuthProcessing = false
-            authErrorMessage = null
-            isAuthGateOpen = false
-            val postAction = pendingAuthorizedAction
-            pendingAuthorizedAction = null
-            postAction?.invoke()
+            loading = false
+            authError = null
+            gateOpen = false
+            pendingAction?.let { action -> pendingAction = null; action() }
         }
-
-        fun triggerGoogleSignIn() {
-            isAuthProcessing = true
-            authErrorMessage = null
-            coroutineScope.launch {
+        fun requireAuth(text: String? = null, action: () -> Unit) {
+            if (authState is AuthState.Authenticated) action() else { pendingAction = action; prompt = text; authError = null; authScreen = AuthScreen.LOGIN; gateOpen = true }
+        }
+        fun google() {
+            loading = true; authError = null
+            scope.launch {
                 try {
-                    val credentialManager = CredentialManager.create(context)
-                    val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-                    val rawClientId = if (resId != 0) {
-                        context.getString(resId)
-                    } else {
-                        runCatching { context.getString(com.example.R.string.default_web_client_id) }.getOrDefault("")
-                    }.trim()
-
-                    val isValidWebClientId = rawClientId.isNotBlank() &&
-                        rawClientId.contains(".apps.googleusercontent.com") &&
-                        rawClientId.matches(Regex("^[0-9]+-[a-zA-Z0-9_.-]+\\.apps\\.googleusercontent\\.com$"))
-                    if (!isValidWebClientId) {
-                        isAuthProcessing = false
-                        authErrorMessage = "Google Sign-In configuration is missing. Verify the Web client ID generated from google-services.json and enable Google in Firebase Authentication."
-                        return@launch
+                    val id = run {
+                        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+                        if (resId != 0) context.getString(resId).trim() else runCatching { context.getString(com.example.R.string.default_web_client_id).trim() }.getOrDefault("")
                     }
-
-                    val option = GetSignInWithGoogleOption.Builder(rawClientId).build()
+                    if (!id.matches(Regex("^[0-9]+-[a-zA-Z0-9_.-]+\\.apps\\.googleusercontent\\.com$"))) {
+                        loading = false; authError = "Google Sign-In configuration is invalid. Verify Firebase Google provider and Web client ID."; return@launch
+                    }
+                    val option = GetSignInWithGoogleOption.Builder(id).build()
                     val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-                    val result = credentialManager.getCredential(context, request)
-                    val credential = result.credential
-                    if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                        val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                        val userResult = authRepository.signInWithGoogle(
-                            idToken = googleCredential.idToken,
-                            email = googleCredential.id,
-                            displayName = googleCredential.displayName
-                        )
-                        if (userResult.isSuccess) {
-                            completeSuccessfulAuth()
-                        } else {
-                            isAuthProcessing = false
-                            authErrorMessage = userResult.exceptionOrNull()?.message ?: "Google sign-in failed."
-                        }
-                    } else {
-                        isAuthProcessing = false
-                        authErrorMessage = "Received an unsupported Google credential. Please try again."
+                    val credential = CredentialManager.create(context).getCredential(context, request).credential
+                    if (credential !is CustomCredential || credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                        loading = false; authError = "Unsupported Google credential returned."; return@launch
                     }
-                } catch (_: GetCredentialCancellationException) {
-                    isAuthProcessing = false
-                } catch (e: NoCredentialException) {
-                    isAuthProcessing = false
-                    authErrorMessage = "Google Sign-In could not access an account on this device. Check Google Play services and try again."
-                } catch (e: Exception) {
-                    isAuthProcessing = false
-                    val msg = e.message.orEmpty()
-                    authErrorMessage = when {
-                        msg.contains("10", ignoreCase = true) || msg.contains("DEVELOPER_ERROR", ignoreCase = true) -> "Google Play Services Developer Error (Code 10). Verify package name and SHA fingerprints in Firebase."
-                        msg.contains("16", ignoreCase = true) || msg.contains("matching credential", ignoreCase = true) -> "Google Sign-In authorization failed. Verify the OAuth client and Firebase provider configuration."
-                        else -> e.message ?: "Google sign-in could not be completed."
-                    }
-                }
-            }
-        }
-
-        fun requireAuthentication(prompt: String? = null, onAuthorized: () -> Unit) {
-            if (authState is AuthState.Authenticated) onAuthorized() else {
-                pendingAuthorizedAction = onAuthorized
-                authPromptMessage = prompt
-                authErrorMessage = null
-                currentAuthScreen = AuthScreen.LOGIN
-                isAuthGateOpen = true
+                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val result = authRepository.signInWithGoogle(googleCredential.idToken, googleCredential.id, googleCredential.displayName)
+                    if (result.isSuccess) finishAuth() else { loading = false; authError = result.exceptionOrNull()?.message ?: "Google sign-in failed." }
+                } catch (_: GetCredentialCancellationException) { loading = false }
+                catch (e: NoCredentialException) { loading = false; authError = "No Google account could be accessed. Check Google Play services and try again." }
+                catch (e: Exception) { loading = false; authError = e.message ?: "Google sign-in could not be completed." }
             }
         }
 
         when {
             authState is AuthState.SetupRequired -> {
-                val setupState = authState as AuthState.SetupRequired
+                val state = authState as AuthState.SetupRequired
                 SetupScreen(
                     onCompleteSetup = { displayName, username, avatarUrl ->
-                        isAuthProcessing = true
-                        authErrorMessage = null
-                        coroutineScope.launch {
-                            val result = authRepository.completeSetup(displayName, username, avatarUrl)
-                            if (result.isSuccess) completeSuccessfulAuth() else {
-                                isAuthProcessing = false
-                                authErrorMessage = result.exceptionOrNull()?.message ?: "Failed to save profile setup"
-                            }
-                        }
-                    },
-                    onActionNotice = showNotice,
-                    initialDisplayName = setupState.user.displayName,
-                    initialUsername = setupState.user.username,
-                    isLoading = isAuthProcessing,
-                    errorMessage = authErrorMessage
+                        loading = true; authError = null
+                        scope.launch { val r = authRepository.completeSetup(displayName, username, avatarUrl); if (r.isSuccess) finishAuth() else { loading = false; authError = r.exceptionOrNull()?.message ?: "Failed to save profile setup" } }
+                    }, onActionNotice = notice, initialDisplayName = state.user.displayName, initialUsername = state.user.username, isLoading = loading, errorMessage = authError
                 )
             }
-
-            isAuthGateOpen && authState !is AuthState.Authenticated -> {
-                when (currentAuthScreen) {
-                    AuthScreen.LOGIN -> LoginScreen(
-                        onLoginClick = { emailOrUsername, password ->
-                            isAuthProcessing = true
-                            authErrorMessage = null
-                            coroutineScope.launch {
-                                val result = authRepository.login(emailOrUsername, password)
-                                if (result.isSuccess) completeSuccessfulAuth() else {
-                                    isAuthProcessing = false
-                                    authErrorMessage = result.exceptionOrNull()?.message ?: "Authentication failed"
-                                }
-                            }
-                        },
-                        onGoogleSignInClick = ::triggerGoogleSignIn,
-                        onPhoneSignInClick = {
-                            authErrorMessage = null
-                            phoneAuthStep = PhoneAuthStep.ENTER_PHONE
-                            currentAuthScreen = AuthScreen.PHONE_OTP
-                        },
-                        onForgotPasswordClick = { resetEmail ->
-                            isForgotPasswordLoading = true
-                            forgotPasswordError = null
-                            forgotPasswordSuccess = false
-                            coroutineScope.launch {
-                                val result = authRepository.sendPasswordResetEmail(resetEmail)
-                                isForgotPasswordLoading = false
-                                if (result.isSuccess) forgotPasswordSuccess = true else forgotPasswordError = result.exceptionOrNull()?.message ?: "Failed to send password reset email."
-                            }
-                        },
-                        onSearchOjasId = { email -> authRepository.recoverOjasId(email) },
-                        isForgotPasswordLoading = isForgotPasswordLoading,
-                        forgotPasswordError = forgotPasswordError,
-                        forgotPasswordSuccess = forgotPasswordSuccess,
-                        onDismissForgotPassword = { forgotPasswordError = null; forgotPasswordSuccess = false },
-                        onNavigateToSignup = { authErrorMessage = null; currentAuthScreen = AuthScreen.SIGNUP },
-                        onBackClick = { isAuthGateOpen = false; pendingAuthorizedAction = null; authErrorMessage = null },
-                        promptMessage = authPromptMessage,
-                        onActionNotice = showNotice,
-                        isLoading = isAuthProcessing,
-                        errorMessage = authErrorMessage
-                    )
-
-                    AuthScreen.SIGNUP -> SignupScreen(
-                        onSignupClick = { email, password ->
-                            isAuthProcessing = true
-                            authErrorMessage = null
-                            coroutineScope.launch {
-                                val result = authRepository.signup(email, password)
-                                if (result.isSuccess) completeSuccessfulAuth() else {
-                                    isAuthProcessing = false
-                                    authErrorMessage = result.exceptionOrNull()?.message ?: "Account creation failed"
-                                }
-                            }
-                        },
-                        onGoogleSignInClick = ::triggerGoogleSignIn,
-                        onPhoneSignInClick = {
-                            authErrorMessage = null
-                            phoneAuthStep = PhoneAuthStep.ENTER_PHONE
-                            currentAuthScreen = AuthScreen.PHONE_OTP
-                        },
-                        onNavigateToLogin = { authErrorMessage = null; currentAuthScreen = AuthScreen.LOGIN },
-                        onActionNotice = showNotice,
-                        isLoading = isAuthProcessing,
-                        errorMessage = authErrorMessage
-                    )
-
-                    AuthScreen.PHONE_OTP -> PhoneAuthScreen(
-                        step = phoneAuthStep,
-                        targetPhoneNumber = phoneTargetNumber,
-                        isLoading = isAuthProcessing,
-                        errorMessage = authErrorMessage,
-                        onActionNotice = showNotice,
-                        onSendOtp = { formattedPhone ->
-                            isAuthProcessing = true
-                            authErrorMessage = null
-                            phoneTargetNumber = formattedPhone
-                            authRepository.sendPhoneOtp(
-                                phoneNumber = formattedPhone,
-                                activity = activity,
-                                onCodeSent = { verificationId, _ ->
-                                    isAuthProcessing = false
-                                    phoneVerificationId = verificationId
-                                    phoneAuthStep = PhoneAuthStep.VERIFY_OTP
-                                    showNotice("Verification code sent to $formattedPhone")
-                                },
-                                onVerificationFailed = { exception ->
-                                    isAuthProcessing = false
-                                    authErrorMessage = exception.message ?: "Failed to send verification code."
-                                },
-                                onAutoVerified = { completeSuccessfulAuth() }
-                            )
-                        },
-                        onVerifyOtp = { otpCode ->
-                            isAuthProcessing = true
-                            authErrorMessage = null
-                            coroutineScope.launch {
-                                val result = authRepository.verifyPhoneOtp(phoneVerificationId, otpCode, phoneTargetNumber)
-                                if (result.isSuccess) completeSuccessfulAuth() else {
-                                    isAuthProcessing = false
-                                    authErrorMessage = result.exceptionOrNull()?.message ?: "Invalid verification code. Please try again."
-                                }
-                            }
-                        },
-                        onResendOtp = {
-                            if (phoneTargetNumber.isNotBlank()) {
-                                isAuthProcessing = true
-                                authErrorMessage = null
-                                authRepository.sendPhoneOtp(
-                                    phoneNumber = phoneTargetNumber,
-                                    activity = activity,
-                                    onCodeSent = { verificationId, _ -> isAuthProcessing = false; phoneVerificationId = verificationId; showNotice("A new verification code has been sent.") },
-                                    onVerificationFailed = { exception -> isAuthProcessing = false; authErrorMessage = exception.message ?: "Failed to resend code." }
-                                )
-                            }
-                        },
-                        onBackClick = {
-                            authErrorMessage = null
-                            if (phoneAuthStep == PhoneAuthStep.VERIFY_OTP) phoneAuthStep = PhoneAuthStep.ENTER_PHONE else currentAuthScreen = AuthScreen.LOGIN
-                        }
-                    )
-                }
+            gateOpen && authState !is AuthState.Authenticated -> when (authScreen) {
+                AuthScreen.LOGIN -> LoginScreen(
+                    onLoginClick = { email, password -> loading = true; authError = null; scope.launch { val r = authRepository.login(email, password); if (r.isSuccess) finishAuth() else { loading = false; authError = r.exceptionOrNull()?.message ?: "Authentication failed" } } },
+                    onNavigateToSignup = { authError = null; authScreen = AuthScreen.SIGNUP }, onActionNotice = notice, onGoogleSignInClick = ::google,
+                    onPhoneSignInClick = { authError = null; phoneStep = PhoneAuthStep.ENTER_PHONE; authScreen = AuthScreen.PHONE_OTP },
+                    onForgotPasswordClick = { email -> forgotLoading = true; forgotError = null; forgotSuccess = false; scope.launch { val r = authRepository.sendPasswordResetEmail(email); forgotLoading = false; if (r.isSuccess) forgotSuccess = true else forgotError = r.exceptionOrNull()?.message ?: "Failed to send password reset email." } },
+                    onSearchOjasId = { email -> authRepository.recoverOjasId(email) }, onBackClick = { gateOpen = false; pendingAction = null; authError = null }, promptMessage = prompt,
+                    isLoading = loading, errorMessage = authError, isForgotPasswordLoading = forgotLoading, forgotPasswordError = forgotError, forgotPasswordSuccess = forgotSuccess,
+                    onDismissForgotPassword = { forgotError = null; forgotSuccess = false }
+                )
+                AuthScreen.SIGNUP -> SignupScreen(
+                    onSignupClick = { email, password -> loading = true; authError = null; scope.launch { val r = authRepository.signup(email, password); if (r.isSuccess) finishAuth() else { loading = false; authError = r.exceptionOrNull()?.message ?: "Account creation failed" } } },
+                    onGoogleSignInClick = ::google, onPhoneSignInClick = { authError = null; phoneStep = PhoneAuthStep.ENTER_PHONE; authScreen = AuthScreen.PHONE_OTP },
+                    onNavigateToLogin = { authError = null; authScreen = AuthScreen.LOGIN }, onActionNotice = notice, isLoading = loading, errorMessage = authError
+                )
+                AuthScreen.PHONE_OTP -> PhoneAuthScreen(
+                    step = phoneStep, targetPhoneNumber = phoneNumber, isLoading = loading, errorMessage = authError, onActionNotice = notice,
+                    onSendOtp = { number ->
+                        loading = true; authError = null; phoneNumber = number
+                        scope.launch { authRepository.sendPhoneOtp(number, activity,
+                            onCodeSent = { id, _ -> loading = false; verificationId = id; phoneStep = PhoneAuthStep.VERIFY_OTP; notice("Verification code sent to $number") },
+                            onVerificationFailed = { e -> loading = false; authError = e.message ?: "Failed to send verification code." },
+                            onAutoVerified = { finishAuth() }) }
+                    },
+                    onVerifyOtp = { code -> loading = true; authError = null; scope.launch { val r = authRepository.verifyPhoneOtp(verificationId, code, phoneNumber); if (r.isSuccess) finishAuth() else { loading = false; authError = r.exceptionOrNull()?.message ?: "Invalid verification code." } } },
+                    onResendOtp = { if (phoneNumber.isNotBlank()) { loading = true; authError = null; scope.launch { authRepository.sendPhoneOtp(phoneNumber, activity, onCodeSent = { id, _ -> loading = false; verificationId = id; notice("A new verification code has been sent.") }, onVerificationFailed = { e -> loading = false; authError = e.message ?: "Failed to resend code." }) } } },
+                    onBackClick = { authError = null; if (phoneStep == PhoneAuthStep.VERIFY_OTP) phoneStep = PhoneAuthStep.ENTER_PHONE else authScreen = AuthScreen.LOGIN }
+                )
             }
-
             else -> {
-                val authenticatedUser = (authState as? AuthState.Authenticated)?.user
+                val user = (authState as? AuthState.Authenticated)?.user
                 Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-                    bottomBar = {
-                        OjasBottomBar(
-                            currentDestination = currentDestination,
-                            onDestinationSelected = { currentDestination = it },
-                            onCreateClick = { requireAuthentication("Sign in to create posts and videos") { isCreateSheetOpen = true } }
-                        )
+                    modifier = Modifier.fillMaxSize(), snackbarHost = { SnackbarHost(snackbars) },
+                    bottomBar = { OjasBottomBar(destination, onDestinationSelected = { destination = it }, onCreateClick = { requireAuth("Sign in to create posts and videos") { createSheet = true } }) }
+                ) { padding ->
+                    Box(Modifier.fillMaxSize().padding(padding)) {
+                        Crossfade(destination, label = "destination_crossfade") { d -> when (d) {
+                            OjasDestination.HOME -> HomeScreen(onActionNotice = notice, onRequireAuth = { action -> requireAuth("Sign in to continue", action) })
+                            OjasDestination.OJ -> OjScreen(selectedCategory = selectedCategory, onFilterClick = { filterOpen = true }, onActionNotice = notice, targetOjId = deepLink, onTargetOjIdConsumed = { deepLink = null }, currentUserId = user?.userId, currentUser = user, ojRepository = ojRepository, socialInteractionRepository = socialRepository, watchAnalyticsRepository = watchAnalyticsRepository, recommendationRepository = recommendationRepository, onRequireAuth = { action -> requireAuth("Sign in to interact with videos", action) })
+                            OjasDestination.EXPLORE -> ExploreScreen(onActionNotice = notice)
+                            OjasDestination.YOU -> YouScreen(onActionNotice = notice, currentUser = user, authRepository = authRepository, socialInteractionRepository = socialRepository, postRepository = postRepository, ojRepository = ojRepository, onLoginClick = { requireAuth("Sign in to your account") {} }, onLogoutClick = { scope.launch { authRepository.logout(); notice("Logged out") } })
+                        } }
                     }
-                ) { innerPadding ->
-                    Box(Modifier.fillMaxSize().padding(innerPadding)) {
-                        Crossfade(targetState = currentDestination, label = "destination_crossfade") { destination ->
-                            when (destination) {
-                                OjasDestination.HOME -> HomeScreen(onActionNotice = showNotice, onRequireAuth = { action -> requireAuthentication("Sign in to continue", action) })
-                                OjasDestination.OJ -> OjScreen(
-                                    selectedCategory = selectedOjCategory,
-                                    onFilterClick = { isFilterSheetOpen = true },
-                                    onActionNotice = showNotice,
-                                    targetOjId = deepLinkTargetOjId,
-                                    onTargetOjIdConsumed = { deepLinkTargetOjId = null },
-                                    currentUserId = authenticatedUser?.userId,
-                                    currentUser = authenticatedUser,
-                                    ojRepository = ojRepository,
-                                    socialInteractionRepository = socialRepository,
-                                    watchAnalyticsRepository = watchAnalyticsRepository,
-                                    recommendationRepository = recommendationRepository,
-                                    onRequireAuth = { action -> requireAuthentication("Sign in to interact with videos", action) }
-                                )
-                                OjasDestination.EXPLORE -> ExploreScreen(onActionNotice = showNotice)
-                                OjasDestination.YOU -> YouScreen(
-                                    onActionNotice = showNotice,
-                                    currentUser = authenticatedUser,
-                                    authRepository = authRepository,
-                                    socialInteractionRepository = socialRepository,
-                                    postRepository = postRepository,
-                                    ojRepository = ojRepository,
-                                    onLoginClick = { requireAuthentication("Sign in to your account") {} },
-                                    onLogoutClick = { coroutineScope.launch { authRepository.logout(); showNotice("Logged out") } }
-                                )
-                            }
-                        }
-                    }
-
-                    if (isCreateSheetOpen) {
-                        CreateActionSheet(
-                            onDismissRequest = { isCreateSheetOpen = false },
-                            onOptionSelected = { option ->
-                                isCreateSheetOpen = false
-                                if (option.equals("Post", true)) isCreatePostOpen = true else if (option.equals("OJ", true)) isCreateOjOpen = true
-                            }
-                        )
-                    }
-                    if (isCreatePostOpen) CreatePostScreen(
-                        currentUser = authenticatedUser, postRepository = postRepository, mediaStorageService = mediaStorageService,
-                        onDismiss = { isCreatePostOpen = false }, onPublishSuccess = { isCreatePostOpen = false }, onActionNotice = showNotice
-                    )
-                    if (isCreateOjOpen) CreateOjScreen(
-                        currentUser = authenticatedUser, ojRepository = ojRepository, mediaStorageService = mediaStorageService,
-                        onDismiss = { isCreateOjOpen = false }, onPublishSuccess = { isCreateOjOpen = false }, onActionNotice = showNotice
-                    )
-                    if (isFilterSheetOpen) CategoryFilterSheet(
-                        selectedCategory = selectedOjCategory,
-                        onDismissRequest = { isFilterSheetOpen = false },
-                        onCategorySelected = { category ->
-                            selectedOjCategory = category
-                            showNotice(if (category != null) "Filter applied: $category" else "Filter cleared: Showing all content")
-                        }
-                    )
+                    if (createSheet) CreateActionSheet(onDismissRequest = { createSheet = false }, onOptionSelected = { option -> createSheet = false; if (option.equals("Post", true)) createPost = true else if (option.equals("OJ", true)) createOj = true })
+                    if (createPost) CreatePostScreen(currentUser = user, postRepository = postRepository, mediaStorageService = mediaStorageService, onDismiss = { createPost = false }, onPublishSuccess = { createPost = false }, onActionNotice = notice)
+                    if (createOj) CreateOjScreen(currentUser = user, ojRepository = ojRepository, mediaStorageService = mediaStorageService, onDismiss = { createOj = false }, onPublishSuccess = { createOj = false }, onActionNotice = notice)
+                    if (filterOpen) CategoryFilterSheet(selectedCategory = selectedCategory, onDismissRequest = { filterOpen = false }, onCategorySelected = { category -> selectedCategory = category; notice(if (category != null) "Filter applied: $category" else "Filter cleared: Showing all content") })
                 }
             }
         }
