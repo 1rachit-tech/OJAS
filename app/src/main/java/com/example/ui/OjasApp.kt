@@ -53,7 +53,7 @@ import com.example.ui.screens.SetupScreen
 import com.example.ui.screens.SignupScreen
 import com.example.ui.screens.YouScreen
 import com.example.ui.theme.OjasTheme
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
 
@@ -150,18 +150,15 @@ fun OjasApp(
 
                     if (!isValidWebClientId) {
                         isAuthProcessing = false
-                        authErrorMessage = "Google Sign-In configuration required: In Firebase Console (ojas-e8161) > Authentication > Sign-in method, enable Google Provider and register your SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28)."
+                        authErrorMessage = "Google Sign-In configuration is missing. Enable the Google provider in Firebase Authentication and verify the Web client ID in google-services.json."
                         return@launch
                     }
 
-                    val googleIdOption = GetGoogleIdOption.Builder()
-                        .setFilterByAuthorizedAccounts(false)
-                        .setServerClientId(rawClientId)
-                        .setAutoSelectEnabled(false)
+                    val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
                         .build()
 
                     val request = GetCredentialRequest.Builder()
-                        .addCredentialOption(googleIdOption)
+                        .addCredentialOption(signInWithGoogleOption)
                         .build()
 
                     val result = credentialManager.getCredential(context, request)
@@ -194,13 +191,13 @@ fun OjasApp(
                     // User dismissed or cancelled Google sign-in
                 } catch (e: NoCredentialException) {
                     isAuthProcessing = false
-                    authErrorMessage = "No authorized Google account found on device. Please ensure Google Sign-In is enabled in Firebase Console (ojas-e8161) with SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28)."
+                    authErrorMessage = "Google Sign-In could not access an account on this device. Check that Google Play services is available and try again."
                 } catch (e: Exception) {
                     isAuthProcessing = false
                     val msg = e.message.orEmpty()
                     authErrorMessage = when {
                         msg.contains("16", ignoreCase = true) || msg.contains("Cannot find a matching credential", ignoreCase = true) -> {
-                            "Google Sign-In authorization failed (Code 16). Please register the app's SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28) in Firebase Console (ojas-e8161)."
+                            "Google Sign-In authorization failed (Code 16). Verify this build's package name and signing certificate SHA fingerprints in Firebase Console."
                         }
                         msg.contains("10", ignoreCase = true) || msg.contains("DEVELOPER_ERROR", ignoreCase = true) -> {
                             "Google Play Services Developer Error (Code 10). Package name (com.rachit.ojas) or SHA-1 fingerprint mismatch in Firebase Console."
