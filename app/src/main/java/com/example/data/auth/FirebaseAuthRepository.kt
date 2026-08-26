@@ -149,7 +149,7 @@ class FirebaseAuthRepository(
             }
             user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(cName).apply {
                 if (!avatarUrl.isNullOrBlank()) setPhotoUri(Uri.parse(avatarUrl))
-            }.build()).awaitTask("updateProfile")
+            }.build()).awaitVoidTask("updateProfile")
             _authState.value = AuthState.Authenticated(profile)
             Result.success(profile)
         } catch (e: FirebaseFirestoreException) {
@@ -174,7 +174,7 @@ class FirebaseAuthRepository(
             isEmailVerified = auth.currentUser?.isEmailVerified ?: current.isEmailVerified
         )
         return try {
-            firestore.collection(USERS).document(userId).set(userToMap(updated), SetOptions.merge()).awaitTask("updateUserProfile")
+            firestore.collection(USERS).document(userId).set(userToMap(updated), SetOptions.merge()).awaitVoidTask("updateUserProfile")
             publishProfile(updated)
             Result.success(updated)
         } catch (e: Exception) { Result.failure(e) }
@@ -193,7 +193,7 @@ class FirebaseAuthRepository(
         val norm = email.trim().lowercase()
         if (!EMAIL_REGEX.matches(norm)) return fail("Enter a valid email address.")
         return try {
-            auth.sendPasswordResetEmail(norm).awaitTask("sendPasswordResetEmail")
+            auth.sendPasswordResetEmail(norm).awaitVoidTask("sendPasswordResetEmail")
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -210,7 +210,7 @@ class FirebaseAuthRepository(
     override suspend fun sendEmailVerification(): Result<Unit> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            user.sendEmailVerification().awaitTask("sendEmailVerification")
+            user.sendEmailVerification().awaitVoidTask("sendEmailVerification")
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -220,7 +220,7 @@ class FirebaseAuthRepository(
     override suspend fun reloadUser(): Result<Boolean> {
         val user = auth.currentUser ?: return fail("No active Firebase session.")
         return try {
-            user.reload().awaitTask("reloadUser")
+            user.reload().awaitVoidTask("reloadUser")
             auth.currentUser?.let { publishProfile(ensureProfile(it)) }
             Result.success(auth.currentUser?.isEmailVerified ?: false)
         } catch (e: Exception) { Result.failure(e) }
@@ -307,7 +307,7 @@ class FirebaseAuthRepository(
             phoneNumber = user.phoneNumber,
             isEmailVerified = user.isEmailVerified
         )
-        ref.set(userToMap(profile)).awaitTask("createUserProfile")
+        ref.set(userToMap(profile)).awaitVoidTask("createUserProfile")
         return profile
     }
 
@@ -342,8 +342,22 @@ class FirebaseAuthRepository(
     private suspend fun <T> Task<T>.awaitTask(op: String): T = suspendCancellableCoroutine { cont ->
         addOnCompleteListener { task ->
             if (task.isSuccessful) {
-                @Suppress("UNCHECKED_CAST")
-                cont.resume(task.result as T)
+                val res = task.result
+                if (res != null) {
+                    cont.resume(res)
+                } else {
+                    cont.resumeWithException(Exception("Operation $op returned null result"))
+                }
+            } else {
+                cont.resumeWithException(task.exception ?: Exception("Operation $op failed"))
+            }
+        }
+    }
+
+    private suspend fun Task<*>.awaitVoidTask(op: String): Unit = suspendCancellableCoroutine { cont ->
+        addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                cont.resume(Unit)
             } else {
                 cont.resumeWithException(task.exception ?: Exception("Operation $op failed"))
             }
