@@ -16,13 +16,16 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK packages
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
         run: |
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
@@ -37,10 +40,6 @@ jobs:
               'import com.google.android.libraries.identity.googleid.GetGoogleIdOption',
               'import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption'
           )
-          s = s.replace(
-              'authErrorMessage = "Google Sign-In configuration required: In Firebase Console (ojas-e8161) > Authentication > Sign-in method, enable Google Provider and register your SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28)."',
-              'authErrorMessage = "Google Sign-In configuration is missing. Enable the Google provider in Firebase Authentication and verify the Web client ID in google-services.json."'
-          )
           old = '''val googleIdOption = GetGoogleIdOption.Builder()
                         .setFilterByAuthorizedAccounts(false)
                         .setServerClientId(rawClientId)
@@ -50,9 +49,7 @@ jobs:
                     val request = GetCredentialRequest.Builder()
                         .addCredentialOption(googleIdOption)
                         .build()'''
-          new = '''// This action is initiated by the explicit "Continue with Google" button.
-                    // Use the Sign in with Google option so Play services opens its account chooser.
-                    val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
+          new = '''val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
                         .build()
 
                     val request = GetCredentialRequest.Builder()
@@ -61,14 +58,6 @@ jobs:
           if old not in s:
               raise SystemExit('Expected Google Sign-In block was not found')
           s = s.replace(old, new)
-          s = s.replace(
-              'authErrorMessage = "No authorized Google account found on device. Please ensure Google Sign-In is enabled in Firebase Console (ojas-e8161) with SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28)."',
-              'authErrorMessage = "Google Sign-In could not access an account on this device. Check that Google Play services is available and try again."'
-          )
-          s = s.replace(
-              '"Google Sign-In authorization failed (Code 16). Please register the app\'s SHA-1 fingerprint (9F:73:87:E5:33:CE:CA:7B:FE:68:FC:E2:A1:0B:B0:C0:39:AC:E0:28) in Firebase Console (ojas-e8161)."',
-              '"Google Sign-In authorization failed (Code 16). Verify this build\'s package name and signing certificate SHA fingerprints in Firebase Console."'
-          )
           p.write_text(s)
           PY
 
