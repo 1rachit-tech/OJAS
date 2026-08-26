@@ -29,36 +29,49 @@ jobs:
         run: |
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Apply Google account chooser fix for this test build
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('app/src/main/java/com/example/ui/OjasApp.kt')
           s = p.read_text()
+
           s = s.replace(
               'import com.google.android.libraries.identity.googleid.GetGoogleIdOption',
               'import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption'
           )
-          old = '''val googleIdOption = GetGoogleIdOption.Builder()
-                        .setFilterByAuthorizedAccounts(false)
-                        .setServerClientId(rawClientId)
-                        .setAutoSelectEnabled(false)
-                        .build()
 
-                    val request = GetCredentialRequest.Builder()
-                        .addCredentialOption(googleIdOption)
-                        .build()'''
-          new = '''val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)
-                        .build()
+          pattern = re.compile(
+              r'''(?P<indent>\s*)val googleIdOption = GetGoogleIdOption\.Builder\(\)\n"
+              r'''(?P=indent)    \.setFilterByAuthorizedAccounts\(false\)\n"
+              r'''(?P=indent)    \.setServerClientId\(rawClientId\)\n"
+              r'''(?P=indent)    \.setAutoSelectEnabled\(false\)\n"
+              r'''(?P=indent)    \.build\(\)\n\n"
+              r'''(?P=indent)val request = GetCredentialRequest\.Builder\(\)\n"
+              r'''(?P=indent)    \.addCredentialOption\(googleIdOption\)\n"
+              r'''(?P=indent)    \.build\(\)''',
+              re.MULTILINE,
+          )
 
-                    val request = GetCredentialRequest.Builder()
-                        .addCredentialOption(signInWithGoogleOption)
-                        .build()'''
-          if old not in s:
-              raise SystemExit('Expected Google Sign-In block was not found')
-          s = s.replace(old, new)
-          p.write_text(s)
+          def replacement(match):
+              indent = match.group('indent')
+              return (
+                  f'{indent}val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(rawClientId)\n'
+                  f'{indent}    .build()\n\n'
+                  f'{indent}val request = GetCredentialRequest.Builder()\n'
+                  f'{indent}    .addCredentialOption(signInWithGoogleOption)\n'
+                  f'{indent}    .build()'
+              )
+
+          updated, count = pattern.subn(replacement, s, count=1)
+          if count == 0:
+              if 'GetSignInWithGoogleOption.Builder(rawClientId)' not in updated:
+                  raise SystemExit('Google Sign-In source block was not recognized')
+          p.write_text(updated)
           PY
 
       - name: Build debug APK
@@ -70,3 +83,4 @@ jobs:
           name: OJAS-google-signin-test-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7
